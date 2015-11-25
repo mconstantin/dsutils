@@ -78,6 +78,16 @@ def create_files(target, name_prefix='file', content=FILE_CONTENT, num_created=1
 
 
 def create_files_from_internet(target, query, file_types=[Bing.TXT_FILE_TYPE], num_created=1, verbose=False):
+    """
+    Download files based on a query, to the target directory.
+
+    :param target: target directory (created in it does not exist)
+    :param query: query (for the Bing search engine)
+    :param file_types: list of file types to search for
+    :param num_created: number of files to download
+    :param verbose: print to console messages for each file downloaded
+    :return: None
+    """
     count = int(num_created)
     if not num_created or count <= 0:
         return
@@ -106,6 +116,20 @@ def create_files_from_internet(target, query, file_types=[Bing.TXT_FILE_TYPE], n
 def create_directory_with_files(target, dir_prefix='folder', file_prefix='file', content=FILE_CONTENT,
                                 levels=1, num_dir_per_level_created=1, num_files_per_dir_created=1,
                                 verbose=False, delay=False):
+    """
+    Create a hierarchy of directories with (identical, text) files with the given content.
+
+    :param target: target directory (root of the created hierarchy)
+    :param dir_prefix: prefix for naming the created directories
+    :param file_prefix: prefix for naming the files
+    :param content: content of the file (text)
+    :param levels: the depth of the created folder hierarchy
+    :param num_dir_per_level_created: number of directories to create on each level (same for all levels)
+    :param num_files_per_dir_created: number of files to create in each (sub)directory (same for all directories)
+    :param verbose: print to console message for each directory/file created
+    :param delay: insert a delay after each number of iterations (this is for testing purpose, of clients which detect FS changes)
+    :return: None
+    """
     if not levels or int(levels) <= 0:
         return
     if not num_dir_per_level_created or int(num_dir_per_level_created) <= 0:
@@ -144,7 +168,7 @@ def create_directory_with_files(target, dir_prefix='folder', file_prefix='file',
                 _dirs_count += 1
                 # num_operations += 1
                 if show_details:
-                    show_details(dir_name)
+                    show_details(dir_path)
                 # recurse into the next level
                 _dirs_count, _files_count = create_level(dir_path, _num_levels, _current_level - 1, _num_dirs_per_level,
                                                          _num_files_per_dir, _dirs_count, _files_count,
@@ -156,12 +180,13 @@ def create_directory_with_files(target, dir_prefix='folder', file_prefix='file',
                 # create file
                 try:
                     filename = file_name_pattern % (_num_levels - _current_level, i, j)
-                    with open(os.path.join(dir_path, filename), 'w') as f:
-                        f.write(content)
+                    filepath = os.path.join(dir_path, filename)
+                    with open(filepath, 'w') as fd:
+                        fd.write(content)
                     _files_count += 1
                     # num_operations += 1
                     if show_details:
-                        show_details(filename, indent_level=2)
+                        show_details(filepath, indent_level=2)
                     if delay:
                         wait()
                 except:
@@ -182,6 +207,20 @@ def create_directory_with_files(target, dir_prefix='folder', file_prefix='file',
 def create_directory_with_files_from_internet(target, query, file_types=[Bing.TXT_FILE_TYPE], dir_prefix='folder',
                                               levels=1, num_dir_per_level_created=1, num_files_per_dir_created=1,
                                               verbose=False, delay=False):
+    """
+    Create a hierarchy of directories with files downloaded from the Internet, based on a query.
+
+    :param target: target directory (root of the created hierarchy)
+    :param query: query for retrieving the files
+    :param file_types: a list of file types to download (splits the total number of files aprox. equally between all file types)
+    :param dir_prefix: prefix for created directory names
+    :param levels: teh depth of the directory hierarchy created
+    :param num_dir_per_level_created: number of directories for each level in the hierarchy (same for all levels)
+    :param num_files_per_dir_created: number of files in each directory created (same for all directories)
+    :param verbose: print to console a message for each directory and file downloaded
+    :param delay: not used
+    :return: None
+    """
     if not levels or int(levels) <= 0:
         return
     if not num_dir_per_level_created or int(num_dir_per_level_created) <= 0:
@@ -218,7 +257,7 @@ def create_directory_with_files_from_internet(target, query, file_types=[Bing.TX
                 _dirs_count += 1
                 # num_operations += 1
                 if show_details:
-                    show_details(dir_name)
+                    show_details(dir_path)
 
                 # prepare the files download list
                 src_list = []
@@ -307,7 +346,7 @@ def print_file_details(filename, indent_level=1):
             print '\t',
 
     indent(indent_level)
-    print 'created file %s' % filename
+    print 'created %s' % filename
 
 
 def print_file_download_details(from_to, indent_level=1):
