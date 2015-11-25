@@ -298,7 +298,7 @@ def create_directory_with_files_from_internet(target, query, file_types=[Bing.TX
     # create the directory structure and prepare list of files to download
     from_to_list = []
     d = create_level(target, urls, from_to_list, levels, levels, num_dir_per_level_created,
-                                   num_files_per_dir_created, 0, show_details=show_details)
+                     num_files_per_dir_created, 0, show_details=show_details)
 
     show_download_details = print_file_download_details if verbose else None
     # parallel downloading of files in their respctive directories
@@ -707,7 +707,16 @@ class CreateFullDirAction(argparse.Action):
 def create_parser():
     parser = argparse.ArgumentParser(add_help=True,
                                      description=
-                                     'create a number of files with identical content in the target directory')
+"""
+Create, rename, move, delete directories and files in a target directory.
+Can create only files or a hierarchy of directories anf files.
+Files could be identical (text) with a specified (or default) content, or
+could be downloaded from the internet, based on a query text.
+Moving, renaming or deleting occurs after creating, if either are specified, and
+files (and folders) are selected randomly for these operations.
+
+Support: email to constantinm@sharplabs.com
+""")
     parser.add_argument('--target-dir', '-d',
                         default=os.getcwd(),
                         help='target directory')

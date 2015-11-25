@@ -49,8 +49,10 @@ def download_file(path, url, chunk_size=CHUNK_SIZE, display=None):
                 print 'error writing %s' % filepath
         else:
             print 'error downloading from %s (%s)' % (url, r.status_code)
-    except requests.exceptions.ConnectionError as e:
-        print 'error downlaoding from %s (%s)' % (url, e)
+    except (requests.exceptions.ConnectionError, requests.exceptions.TooManyRedirects, requests.exceptions.ChunkedEncodingError) as e:
+        print 'error downloading from %s (%s)' % (url, e)
+    except Exception as e:
+        print 'general error downloading from %s (%s)' % (url, e)
     return success
 
 
@@ -84,7 +86,7 @@ def download_file2(from_to, chunk_size=CHUNK_SIZE, display=None):
                 print 'error writing %s' % filepath
         else:
             print 'error downloading from %s (%s)' % (url, r.status_code)
-    except (requests.exceptions.ConnectionError, requests.exceptions.TooManyRedirects) as e:
+    except (requests.exceptions.ConnectionError, requests.exceptions.TooManyRedirects, requests.exceptions.ChunkedEncodingError) as e:
         print 'error downloading from %s (%s)' % (url, e)
     except Exception as e:
         print 'general error downloading from %s (%s)' % (url, e)
