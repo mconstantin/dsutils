@@ -9,6 +9,7 @@ import sys
 import argparse
 import random
 from time import sleep
+from bing import Bing, KEY
 
 FILE_CONTENT = """
     Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut egestas condimentum egestas.
@@ -43,6 +44,7 @@ FILE_CONTENT = """
 wait_for = 0.01
 after_each = 10
 
+
 class ItemError(Exception):
     pass
 
@@ -75,67 +77,223 @@ def create_files(target, name_prefix='file', content=FILE_CONTENT, num_created=1
     print 'created %d files' % index
 
 
+def create_files_from_internet(target, query, file_types=[Bing.TXT_FILE_TYPE], num_created=1, verbose=False):
+    count = int(num_created)
+    if not num_created or count <= 0:
+        return
+    # create target directory if it does not exist
+    if not os.path.exists(target):
+        os.makedirs(target)
+
+    if verbose:
+        print 'created files'
+
+    bing = Bing(KEY)
+    files_per_type = count / len(file_types)
+    remainder = count - files_per_type * len(file_types)
+    file_tuples = []
+    for ft in file_types:
+        num = files_per_type + 1 if remainder > 0 else files_per_type
+        file_tuples.append((ft, num))
+        remainder -= 1
+
+    display = print_file_details if verbose else None
+    total = bing.execute(target, query, file_tuples, display=display)
+    if verbose:
+        print 'created %d files' % total
+
+
 def create_directory_with_files(target, dir_prefix='folder', file_prefix='file', content=FILE_CONTENT,
-                                num_dir_created=1, num_files_per_dir_created=1,
+                                levels=1, num_dir_per_level_created=1, num_files_per_dir_created=1,
                                 verbose=False, delay=False):
-    if not num_dir_created or int(num_dir_created) <= 0:
+    if not levels or int(levels) <= 0:
+        return
+    if not num_dir_per_level_created or int(num_dir_per_level_created) <= 0:
         return
     if not num_files_per_dir_created or int(num_files_per_dir_created) <= 0:
         return
     # create target directory if it does not exist
     if not os.path.exists(target):
         os.makedirs(target)
-    file_name_pattern, files_count = make_file_pattern(file_prefix, num_files_per_dir_created)
-    dir_name_pattern, dirs_count = make_dir_pattern(dir_prefix, num_dir_created)
+
+    # make the naming pattern for file
+    file_name_pattern, files_count_per_dir, total_files = make_file_pattern(file_prefix, '.txt',
+                                                                            levels, num_dir_per_level_created,
+                                                                            num_files_per_dir_created)
+    # make the naming pattern for directory
+    dir_name_pattern, dirs_count_per_level, total_dirs = make_dir_pattern(dir_prefix, levels, num_dir_per_level_created)
 
     if verbose:
-        print 'created directories with files'
+        print 'creating directories (%d) and files (%d)' % (total_dirs, total_files)
 
-    file_index = 0
-    dir_index = 0
-    global num_operations
+    # recursive function to build each level of directories and files
+    def create_level(current_target, _num_levels, _current_level, _num_dirs_per_level, _num_files_per_dir,
+                     _current_dirs_count, _current_files_count, show_details=None):
+        if _current_level <= 0:
+            return _current_dirs_count, _current_files_count
 
-    for i in range(dirs_count):
-        dir_path = os.path.join(target, dir_name_pattern % i)
-        # create directory
-        try:
-            os.makedirs(dir_path)
-            dir_index += 1
-            num_operations += 1
-            if verbose:
-                print_file_details(dir_name_pattern % i)
-            pass
-        except:
-            pass
+        _dirs_count = _current_dirs_count
+        _files_count = _current_files_count
 
-        for j in range(files_count):
+        for i in range(_num_dirs_per_level):
+            dir_name = dir_name_pattern % (_num_levels - _current_level, i)
+            dir_path = os.path.join(current_target, dir_name)
+            # create directory
             try:
-                filename = file_name_pattern % (i * files_count + j)
-                with open(os.path.join(dir_path, filename), 'w') as f:
-                    f.write(content)
-                file_index += 1
-                num_operations += 1
-                if verbose:
-                    print_file_details(filename, level=2)
-                if delay:
-                    wait()
+                os.makedirs(dir_path)
+                _dirs_count += 1
+                # num_operations += 1
+                if show_details:
+                    show_details(dir_name)
+                # recurse into the next level
+                _dirs_count, _files_count = create_level(dir_path, _num_levels, _current_level - 1, _num_dirs_per_level,
+                                                         _num_files_per_dir, _dirs_count, _files_count,
+                                                         show_details=show_details)
             except:
                 pass
-    print 'created %d directories with %d files' % (dir_index, file_index)
+
+            for j in range(_num_files_per_dir):
+                # create file
+                try:
+                    filename = file_name_pattern % (_num_levels - _current_level, i, j)
+                    with open(os.path.join(dir_path, filename), 'w') as f:
+                        f.write(content)
+                    _files_count += 1
+                    # num_operations += 1
+                    if show_details:
+                        show_details(filename, indent_level=2)
+                    if delay:
+                        wait()
+                except:
+                    pass
+        return _dirs_count, _files_count
+
+    show_details = print_file_details if verbose else None
+    d, f = create_level(target, levels, levels, num_dir_per_level_created, num_files_per_dir_created, 0, 0,
+                        show_details=show_details)
+
+    global num_operations
+    num_operations = d + f
+
+    if verbose:
+        print 'created %d directories with %d files' % (d, f)
 
 
-def make_file_pattern(name_prefix, num_files):
-    count = int(num_files)
-    num_digits = len(str(count))
-    name_pattern = name_prefix + '%%0%dd.txt' % num_digits
-    return name_pattern, count
+def create_directory_with_files_from_internet(target, query, file_types=[Bing.TXT_FILE_TYPE], dir_prefix='folder',
+                                              levels=1, num_dir_per_level_created=1, num_files_per_dir_created=1,
+                                              verbose=False, delay=False):
+    if not levels or int(levels) <= 0:
+        return
+    if not num_dir_per_level_created or int(num_dir_per_level_created) <= 0:
+        return
+    if not num_files_per_dir_created or int(num_files_per_dir_created) <= 0:
+        return
+    # create target directory if it does not exist
+    if not os.path.exists(target):
+        os.makedirs(target)
+
+    # make the naming pattern for file
+    _, files_count_per_dir, total_files = make_file_pattern('', '', levels, num_dir_per_level_created,
+                                                            num_files_per_dir_created)
+    # make the naming pattern for directory
+    dir_name_pattern, dirs_count_per_level, total_dirs = make_dir_pattern(dir_prefix, levels, num_dir_per_level_created)
+
+    if verbose:
+        print 'creating directories (%d) and files (%d)' % (total_dirs, total_files)
+
+    # recursive function to build each level of directories and files
+    def create_level(current_target, urls, from_to_list, _num_levels, _current_level, _num_dirs_per_level,
+                     _num_files_per_dir, _current_dirs_count, show_details=None):
+
+        _dirs_count = _current_dirs_count
+        if _current_level <= 0:
+            return _dirs_count
+
+        for i in range(_num_dirs_per_level):
+            dir_name = dir_name_pattern % (_num_levels - _current_level, i)
+            dir_path = os.path.join(current_target, dir_name)
+            # create directory
+            try:
+                os.makedirs(dir_path)
+                _dirs_count += 1
+                # num_operations += 1
+                if show_details:
+                    show_details(dir_name)
+
+                # prepare the files download list
+                src_list = []
+                for i in range(_num_files_per_dir):
+                    src_list.append(urls.pop(0))
+                from_to_list.append({'src': src_list, 'dst': dir_path})
+
+                # recurse into the next level
+                _dirs_count = create_level(dir_path, urls, from_to_list, _num_levels, _current_level - 1,
+                                           _num_dirs_per_level, _num_files_per_dir, _dirs_count,
+                                           show_details=show_details)
+            except:
+                pass
+
+        return _dirs_count
+
+    bing = Bing(KEY)
+    urls = []
+    files_per_type = total_files / len(file_types)
+    remainder = total_files - files_per_type * len(file_types)
+    file_tuples = []
+    for ft in file_types:
+        num = files_per_type + 1 if remainder > 0 else files_per_type
+        file_tuples.append((ft, num))
+        remainder -= 1
+
+    result_total = 0
+    for file_tuple in file_tuples:
+        result_per_file_type = 0
+        for url in bing.get_files(query, file_tuple[0], file_tuple[1]):
+            urls.append(url)
+            result_per_file_type += 1
+        print 'found %d (%d) results for %s type' % (result_per_file_type, file_tuple[1], file_tuple[0])
+        result_total += result_per_file_type
+    print 'found %d results for querying "%s"' % (result_total, query)
+
+    show_details = print_file_details if verbose else None
+    # create the directory structure and prepare list of files to download
+    from_to_list = []
+    d = create_level(target, urls, from_to_list, levels, levels, num_dir_per_level_created,
+                                   num_files_per_dir_created, 0, show_details=show_details)
+
+    show_download_details = print_file_download_details if verbose else None
+    # parallel downloading of files in their respctive directories
+    f = bing.execute2(from_to_list, display=show_download_details)
+
+    global num_operations
+    num_operations = d + f
+
+    if verbose:
+        print 'created %d directories with %d files' % (d, f)
 
 
-def make_dir_pattern(name_prefix, num_files):
-    count = int(num_files)
-    num_digits = len(str(count))
-    name_pattern = name_prefix + '%%0%dd' % num_digits
-    return name_pattern, count
+def make_file_pattern(name_prefix, extension, num_levels, num_dirs_per_level, num_files_per_dir):
+    count_levels = int(num_levels)
+    count_dirs_per_level = int(num_dirs_per_level)
+    count_files_per_dir = int(num_files_per_dir)
+    _, dir_num_digits, count_dirs = make_dir_pattern('', num_levels, num_dirs_per_level)
+    # file_num_digits = len(str(count_files_per_dir - 1)) + dir_num_digits
+    total_count_files = count_dirs * count_files_per_dir
+    name_pattern = name_prefix + '%%0%dd%%0%dd%%0%dd%s' % \
+                                 (len(str(count_levels - 1)), len(str(count_dirs_per_level - 1)),
+                                  len(str(count_files_per_dir - 1)), extension)
+    return name_pattern, count_files_per_dir, total_count_files
+
+
+def make_dir_pattern(name_prefix, num_levels, num_dirs_per_level):
+    count_levels = int(num_levels)
+    count_dirs_per_level = int(num_dirs_per_level)
+    total_count_dirs = (count_dirs_per_level ** (count_levels + 1) - 1) / (count_dirs_per_level - 1) - 1
+    # format for directory numbering is 'llnn' where 'll' is the level number and 'nn' is the directory number,
+    # e.g. if num_levels=2 and num_dirs=10, directory will be numbered as '00', '01',..., '09', '10', '11',...,'19
+    # dir_num_digits = len(str(count_levels-1)) + count_levels * len(str(count_dirs_per_level-1))
+    name_pattern = name_prefix + '%%0%dd%%0%dd' % (len(str(count_levels - 1)), len(str(count_dirs_per_level - 1)))
+    return name_pattern, count_dirs_per_level, total_count_dirs
 
 
 def wait():
@@ -143,17 +301,27 @@ def wait():
         sleep(wait_for)
 
 
-def print_file_details(filename, level=1):
+def print_file_details(filename, indent_level=1):
     def indent(tab_level):
         for i in range(tab_level):
             print '\t',
 
-    indent(level)
-    print filename
+    indent(indent_level)
+    print 'created file %s' % filename
+
+
+def print_file_download_details(from_to, indent_level=1):
+    def indent(tab_level):
+        for i in range(tab_level):
+            print '\t',
+
+    indent(indent_level)
+    url = from_to[0]
+    path = from_to[1]
+    print 'downloaded from %s to %s' % (url, path)
 
 
 def get_children(dir_to_flatten, include_dirs=False, exclude_dirs=None):
-
     """
     return a dictionary of all children of the given directory
     :param dir_to_flatten: the "root" directory for which to return the children
@@ -162,7 +330,8 @@ def get_children(dir_to_flatten, include_dirs=False, exclude_dirs=None):
              its own children (a file has 0 children)
     """
 
-    def get_children_for_level(files, count, dir_to_flatten, include_dirs=include_dirs, exclude_dirs=exclude_dirs, root=False):
+    def get_children_for_level(files, count, dir_to_flatten, include_dirs=include_dirs, exclude_dirs=exclude_dirs,
+                               root=False):
         for dirpath, dirnames, filenames in os.walk(dir_to_flatten):
             for filename in filenames:
                 files[os.path.join(dirpath, filename)] = 0
@@ -187,12 +356,12 @@ def get_children(dir_to_flatten, include_dirs=False, exclude_dirs=None):
 
     files = {}
     count = 0
-    count = get_children_for_level(files, count, dir_to_flatten, include_dirs=include_dirs, exclude_dirs=exclude_dirs, root=True)
+    count = get_children_for_level(files, count, dir_to_flatten, include_dirs=include_dirs, exclude_dirs=exclude_dirs,
+                                   root=True)
     return count, files
 
 
 def get_num_children(dir_to_flatten, include_dirs=False, exclude_dirs=None):
-
     """
     return the number of children for the given directory
     :param dir_to_flatten: the "root" directory for which to calculate the number of children
@@ -232,7 +401,7 @@ def delete_files(target, num_deleted=1, verbose=False, recursive=False, delay=Fa
         total = len(children)
         children = [os.path.join(target, child) for child in children]
 
-    if total ==0:
+    if total == 0:
         # nothing to delete
         return
 
@@ -242,7 +411,7 @@ def delete_files(target, num_deleted=1, verbose=False, recursive=False, delay=Fa
     random.seed()
     index = 0
     while index < count:
-        filepath = children[random.randint(0, total-1)]
+        filepath = children[random.randint(0, total - 1)]
         try:
             if os.path.isfile(filepath) or recursive and os.path.isdir(filepath):
                 if os.path.exists(filepath):
@@ -294,7 +463,7 @@ def rename_files(target, num_renamed=1, verbose=False, recursive=False, delay=Fa
         total = len(children)
         children = [os.oath.join(target, child) for child in children]
 
-    if total ==0:
+    if total == 0:
         # nothing to rename
         return
     if verbose:
@@ -303,7 +472,7 @@ def rename_files(target, num_renamed=1, verbose=False, recursive=False, delay=Fa
     random.seed()
     index = 0
     while index < count:
-        filepath = children[random.randint(0, total-1)]
+        filepath = children[random.randint(0, total - 1)]
         path_no_ext, ext = os.path.splitext(filepath)
         try:
             if os.path.isfile(filepath) or recursive and os.path.isdir(filepath):
@@ -373,7 +542,7 @@ def move_files(target, subfolder=None, num_moved=1, verbose=False, recursive=Fal
     index = 0
     random.seed()
     while index < count:
-        filepath = children[random.randint(0, total-1)]
+        filepath = children[random.randint(0, total - 1)]
         try:
             if os.path.isfile(filepath) or recursive and os.path.isdir(filepath):
                 if os.path.exists(filepath):
@@ -453,7 +622,8 @@ class DelayAction(argparse.Action):
 class CreateFullDirAction(argparse.Action):
     def __init__(self, option_strings, nargs='*', **kwargs):
         if option_strings != ['--number-full-dir-created', '-nfdc']:
-            raise ValueError('CreateFullDirAction action currently applies only to the --number-full-dir-created/-nfdc option')
+            raise ValueError(
+                'CreateFullDirAction action currently applies only to the --number-full-dir-created/-nfdc option')
 
         if nargs != '*':
             raise ValueError('nargs is ignored')
@@ -463,30 +633,36 @@ class CreateFullDirAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         if option_string in self.option_strings:
             setattr(namespace, self.dest, True)
-        num_dir_created, num_files_per_dir_created = CreateFullDirAction._get_create_dir_with_files_args(values)
+        num_dir_levels, num_dir_created, num_files_per_dir_created = CreateFullDirAction._get_create_dir_with_files_args(
+            values)
+        setattr(namespace, 'num_dir_levels', num_dir_levels)
         setattr(namespace, 'num_dir_created', num_dir_created)
         setattr(namespace, 'num_files_per_dir_created', num_files_per_dir_created)
 
     @staticmethod
     def _get_create_dir_with_files_args(args):
+        num_dir_levels = 0
         num_dir_created = 0
         num_files_per_dir_created = 0
 
         try:
             if len(args) != 1:
-                raise ValueError('argument value for --number-full-dir-created/-nfdc option shoudld be in the n/m format')
+                raise ValueError(
+                    'argument value for --number-full-dir-created/-nfdc option shoudld be in the l/m/n format')
             values = args[0].split('/')
-            if len(values) != 2:
-                raise ValueError('argument value for --number-full-dir-created/-nfdc option shoudld be in the n/m format')
+            if len(values) != 3:
+                raise ValueError(
+                    'argument value for --number-full-dir-created/-nfdc option shoudld be in the l/m/n format')
             try:
-                num_dir_created = int(values[0])
-                num_files_per_dir_created = int(values[1])
+                num_dir_levels = int(values[0])
+                num_dir_created = int(values[1])
+                num_files_per_dir_created = int(values[2])
             except ValueError as e:
                 raise e
         except ValueError as e:
             raise e
 
-        return num_dir_created, num_files_per_dir_created
+        return num_dir_levels, num_dir_created, num_files_per_dir_created
 
 
 def create_parser():
@@ -499,6 +675,15 @@ def create_parser():
     parser.add_argument('--file-content', '-c',
                         default=FILE_CONTENT,
                         help='content of the text file')
+    parser.add_argument('--file-content-query', '-cq',
+                        help='a query for selecting files to download, e.g. "document management"')
+    parser.add_argument('--file-types', '-ft',
+                        nargs='*',
+                        choices=['PDF', 'IMAGE', 'TXT', 'TEXT', 'DOC', 'PPT', 'HTM', 'HTML', 'RTF', 'XLS'],
+                        help='list file types to download, e.g. PDF, TXT, IMAGE, DOC, etc.')
+    # parser.add_argument('--number-query-results', '-nqr',
+    #                     default=0,
+    #                     help='number of query results, i.e. number of files to download')
     parser.add_argument('--file-prefix', '-fp',
                         default='file',
                         help='prefix for the filename')
@@ -624,16 +809,30 @@ def main(argv=None):
         wait_for = options.wait_for
         after_each = options.after_each
 
-    # must be called in this order
+    # must be called in this order?
     # default for files created is 0
-    create_files(target, name_prefix=options.file_prefix, content=options.file_content,
-                 num_created=options.number_files_created, verbose=options.list_created, delay=delay)
+    if options.number_files_created:
+        if options.file_content_query:
+            create_files_from_internet(target, options.file_content_query, file_types=options.file_types,
+                                       num_created=options.number_files_created, verbose=options.list_created)
+        else:
+            create_files(target, name_prefix=options.file_prefix, content=options.file_content,
+                         num_created=options.number_files_created, verbose=options.list_created, delay=delay)
     # TODO create empty directories
+
     if options.number_full_dir_created:
-        create_directory_with_files(target, dir_prefix=options.dir_prefix, file_prefix=options.file_prefix,
-                                    content=options.file_content, num_dir_created=options.num_dir_created,
-                                    num_files_per_dir_created=options.num_files_per_dir_created,
-                                    verbose=options.list_created, delay=delay)
+        if options.file_content_query:
+            create_directory_with_files_from_internet(target, options.file_content_query, dir_prefix=options.dir_prefix,
+                                                      file_types=options.file_types, levels=options.num_dir_levels,
+                                                      num_dir_per_level_created=options.num_dir_created,
+                                                      num_files_per_dir_created=options.num_files_per_dir_created,
+                                                      verbose=options.list_created, delay=delay)
+        else:
+            create_directory_with_files(target, dir_prefix=options.dir_prefix, file_prefix=options.file_prefix,
+                                        content=options.file_content, levels=options.num_dir_levels,
+                                        num_dir_per_level_created=options.num_dir_created,
+                                        num_files_per_dir_created=options.num_files_per_dir_created,
+                                        verbose=options.list_created, delay=delay)
     # default for files deleted is 0
     delete_files(target, num_deleted=options.number_files_deleted, verbose=options.list_deleted,
                  delay=options.add_delay, recursive=options.recursive)
@@ -643,6 +842,7 @@ def main(argv=None):
     # default for files moved is 0
     move_files(target, num_moved=options.number_files_moved, verbose=options.list_moved,
                delay=options.add_delay, recursive=options.recursive)
+
 
 if __name__ == "__main__":
     sys.exit(main())
